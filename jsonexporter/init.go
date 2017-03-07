@@ -8,15 +8,15 @@ import (
 )
 
 type ScrapeType struct {
-	Configure  func(*Config, *harness.MetricRegistry)
-	NewScraper func(*Config) (JsonScraper, error)
+	Configure  func(*Config, Endpoint, *harness.MetricRegistry)
+	NewScraper func(*Config, Endpoint) (JsonScraper, error)
 }
 
 var ScrapeTypes = map[string]*ScrapeType{
 	"object": {
-		Configure: func(config *Config, reg *harness.MetricRegistry) {
+		Configure: func(config *Config, endpoint Endpoint,reg *harness.MetricRegistry) {
 			for subName := range config.Values {
-				name := harness.MakeMetricName(config.Name, subName)
+				name := harness.MakeMetricName(endpoint.Prefix + config.Name, subName)
 				reg.Register(
 					name,
 					prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -29,9 +29,9 @@ var ScrapeTypes = map[string]*ScrapeType{
 		NewScraper: NewObjectScraper,
 	},
 	"value": {
-		Configure: func(config *Config, reg *harness.MetricRegistry) {
+		Configure: func(config *Config, endpoint Endpoint, reg *harness.MetricRegistry) {
 			reg.Register(
-				config.Name,
+				endpoint.Prefix + config.Name,
 				prometheus.NewGaugeVec(prometheus.GaugeOpts{
 					Name: config.Name,
 					Help: config.Help,
@@ -49,11 +49,11 @@ func Init(c *cli.Context, reg *harness.MetricRegistry) (harness.Collector, error
 
 	if len(args) < 2 {
 		cli.ShowAppHelp(c)
-		return nil, fmt.Errorf("not enough arguments")
+		return nil, fmt.Errorf("not XXenough arguments")
 	}
 
 	var (
-		endpoint   = args[0]
+		endpointsPath = args[0]
 		configPath = args[1]
 	)
 
@@ -61,20 +61,27 @@ func Init(c *cli.Context, reg *harness.MetricRegistry) (harness.Collector, error
 	if err != nil {
 		return nil, err
 	}
-
-	scrapers := make([]JsonScraper, len(configs))
-	for i, config := range configs {
-		tpe := ScrapeTypes[config.Type]
-		if tpe == nil {
-			return nil, fmt.Errorf("unknown scrape type;type:<%s>", config.Type)
+	endpoints, err := loadEndpoints(endpointsPath)
+	fmt.Errorf("Endpoints : <%s>", endpoints)
+	if err != nil {
+		return nil, err
+	}
+  scrapesCount := len(configs)
+	scrapers := make([]JsonScraper, scrapesCount* len(endpoints))
+	for j, endpoint := range endpoints {
+		for i, config := range configs { // apply the same configuration to all endpoints
+			tpe := ScrapeTypes[config.Type]
+			if tpe == nil {
+				return nil, fmt.Errorf("unknown scrape type;type:<%s>", config.Type)
+			}
+			tpe.Configure(config, endpoint, reg)
+			scraper, err := tpe.NewScraper(config, endpoint)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create scraper;name:<%s>,err:<%s>", config.Name, err)
+			}
+			scrapers[j*scrapesCount + i] = scraper
 		}
-		tpe.Configure(config, reg)
-		scraper, err := tpe.NewScraper(config)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create scraper;name:<%s>,err:<%s>", config.Name, err)
-		}
-		scrapers[i] = scraper
 	}
 
-	return NewCollector(endpoint, scrapers), nil
+	return NewCollector(endpoints, scrapers), nil
 }

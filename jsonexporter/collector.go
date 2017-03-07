@@ -10,7 +10,7 @@ import (
 )
 
 type Collector struct {
-	Endpoint string
+	Endpoints []Endpoint
 	scrapers []JsonScraper
 }
 
@@ -44,17 +44,18 @@ func compilePaths(paths map[string]string) (map[string]*jsonpath.Path, error) {
 	return compiledPaths, nil
 }
 
-func NewCollector(endpoint string, scrapers []JsonScraper) *Collector {
+func NewCollector(endpoints []Endpoint, scrapers []JsonScraper) *Collector {
 	return &Collector{
-		Endpoint: endpoint,
+		Endpoints: endpoints,
 		scrapers: scrapers,
 	}
 }
 
-func (col *Collector) fetchJson() ([]byte, error) {
-	resp, err := http.Get(col.Endpoint)
+func (col *Collector) fetchJson(endpoint Endpoint) ([]byte, error) {
+	url := endpoint.URL
+	resp, err := http.Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch json from endpoint;endpoint:<%s>,err:<%s>", col.Endpoint, err)
+		return nil, fmt.Errorf("failed to fetch json from endpoint;endpoint:<%s>,err:<%s>", url, err)
 	}
 	defer resp.Body.Close()
 
@@ -67,16 +68,19 @@ func (col *Collector) fetchJson() ([]byte, error) {
 }
 
 func (col *Collector) Collect(reg *harness.MetricRegistry) {
-	json, err := col.fetchJson()
-	if err != nil {
-		log.Error(err)
-		return
-	}
-
-	for _, scraper := range col.scrapers {
-		if err := scraper.Scrape(json, reg); err != nil {
-			log.Errorf("error while scraping json;err:<%s>", err)
-			continue
+	scrapesPerEndpoint := len(col.scrapers)/len(col.Endpoints)
+	for i, endpoint := range col.Endpoints {
+		json, err := col.fetchJson(endpoint)
+		if err != nil {
+			log.Error(err)
+			return
 		}
+
+		for j := 0; j < scrapesPerEndpoint; j++ {
+			if err := col.scrapers[i*scrapesPerEndpoint + j].Scrape(json, reg); err != nil {
+				log.Errorf("error while scraping json from;err:<%s>;endpoint:<%s>", err, endpoint.URL)
+				continue
+			}
+	  }
 	}
 }

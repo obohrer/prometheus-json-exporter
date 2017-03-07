@@ -10,15 +10,16 @@ import (
 )
 
 type JsonScraper interface {
-	Scrape(data []byte, reg *harness.MetricRegistry) error
+	Scrape(data []byte,reg *harness.MetricRegistry) error
 }
 
 type ValueScraper struct {
 	*Config
+	Endpoint
 	valueJsonPath *jsonpath.Path
 }
 
-func NewValueScraper(config *Config) (JsonScraper, error) {
+func NewValueScraper(config *Config, endpoint Endpoint) (JsonScraper, error) {
 	valuepath, err := compilePath(config.Path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse path;path:<%s>,err:<%s>", config.Path, err)
@@ -26,6 +27,7 @@ func NewValueScraper(config *Config) (JsonScraper, error) {
 
 	scraper := &ValueScraper{
 		Config:        config,
+		Endpoint:      endpoint,
 		valueJsonPath: valuepath,
 	}
 	return scraper, nil
@@ -78,19 +80,20 @@ func (vs *ValueScraper) Scrape(data []byte, reg *harness.MetricRegistry) error {
 			return
 		}
 
-		log.Debugf("metric updated;name:<%s>,labels:<%s>,value:<%.2f>", vs.Name, vs.Labels, value)
-		reg.Get(vs.Name).(*prometheus.GaugeVec).With(vs.Labels).Set(value)
+		log.Debugf("metric updated;name:<%s>,labels:<%s>,value:<%.2f>", vs.Endpoint.Prefix+vs.Name, vs.Labels, value)
+		reg.Get(vs.Endpoint.Prefix+vs.Name).(*prometheus.GaugeVec).With(vs.Labels).Set(value)
 	})
 }
 
 type ObjectScraper struct {
 	*ValueScraper
+	Endpoint
 	labelJsonPaths map[string]*jsonpath.Path
 	valueJsonPaths map[string]*jsonpath.Path
 }
 
-func NewObjectScraper(config *Config) (JsonScraper, error) {
-	valueScraper, err := NewValueScraper(config)
+func NewObjectScraper(config *Config, endpoint Endpoint) (JsonScraper, error) {
+	valueScraper, err := NewValueScraper(config, endpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -105,6 +108,7 @@ func NewObjectScraper(config *Config) (JsonScraper, error) {
 	}
 	scraper := &ObjectScraper{
 		ValueScraper:   valueScraper.(*ValueScraper),
+		Endpoint:       endpoint,
 		labelJsonPaths: labelPaths,
 		valueJsonPaths: valuePaths,
 	}
@@ -194,7 +198,7 @@ func (obsc *ObjectScraper) Scrape(data []byte, reg *harness.MetricRegistry) erro
 				metricValue = value
 			}
 
-			fqn := harness.MakeMetricName(obsc.Name, name)
+			fqn := harness.MakeMetricName(obsc.Endpoint.Prefix+obsc.Name, name)
 			log.Debugf("metric updated;name:<%s>,labels:<%s>,value:<%.2f>", fqn, labels, metricValue)
 			reg.Get(fqn).(*prometheus.GaugeVec).With(labels).Set(metricValue)
 		}

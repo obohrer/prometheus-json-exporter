@@ -15,6 +15,11 @@ type Config struct {
 	Values map[string]string `yaml:values`
 }
 
+type Endpoint struct {
+	URL    string `yaml:url`
+	Prefix string `yaml:prefix`
+}
+
 func (config *Config) labelNames() []string {
 	labelNames := make([]string, 0, len(config.Labels))
 	for name := range config.Labels {
@@ -44,4 +49,17 @@ func loadConfig(configPath string) ([]*Config, error) {
 	}
 
 	return configs, nil
+}
+
+func loadEndpoints(endpointsPath string) ([]Endpoint, error) {
+	data, err := ioutil.ReadFile(endpointsPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load endpointsPath;path:<%s>,err:<%s>", endpointsPath, err)
+	}
+
+	var endpoints []Endpoint
+	if err := yaml.Unmarshal(data, &endpoints); err != nil {
+		return nil, fmt.Errorf("failed to parse yaml;err:<%s>", err)
+	}
+	return endpoints, nil
 }
