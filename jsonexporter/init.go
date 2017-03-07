@@ -8,15 +8,15 @@ import (
 )
 
 type ScrapeType struct {
-	Configure  func(*Config, Endpoint, *harness.MetricRegistry)
-	NewScraper func(*Config, Endpoint) (JsonScraper, error)
+	Configure  func(*Config, *harness.MetricRegistry)
+	NewScraper func(*Config) (JsonScraper, error)
 }
 
 var ScrapeTypes = map[string]*ScrapeType{
 	"object": {
-		Configure: func(config *Config, endpoint Endpoint,reg *harness.MetricRegistry) {
+		Configure: func(config *Config,reg *harness.MetricRegistry) {
 			for subName := range config.Values {
-				name := harness.MakeMetricName(endpoint.Prefix + config.Name, subName)
+				name := harness.MakeMetricName(config.Name, subName)
 				reg.Register(
 					name,
 					prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -29,9 +29,9 @@ var ScrapeTypes = map[string]*ScrapeType{
 		NewScraper: NewObjectScraper,
 	},
 	"value": {
-		Configure: func(config *Config, endpoint Endpoint, reg *harness.MetricRegistry) {
+		Configure: func(config *Config, reg *harness.MetricRegistry) {
 			reg.Register(
-				endpoint.Prefix + config.Name,
+				config.Name,
 				prometheus.NewGaugeVec(prometheus.GaugeOpts{
 					Name: config.Name,
 					Help: config.Help,
@@ -65,21 +65,18 @@ func Init(c *cli.Context, reg *harness.MetricRegistry) (harness.Collector, error
 	if err != nil {
 		return nil, err
 	}
-  scrapesCount := len(configs)
-	scrapers := make([]JsonScraper, scrapesCount* len(endpoints))
-	for j, endpoint := range endpoints {
-		for i, config := range configs { // apply the same configuration to all endpoints
-			tpe := ScrapeTypes[config.Type]
-			if tpe == nil {
-				return nil, fmt.Errorf("unknown scrape type;type:<%s>", config.Type)
-			}
-			tpe.Configure(config, endpoint, reg)
-			scraper, err := tpe.NewScraper(config, endpoint)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create scraper;name:<%s>,err:<%s>", config.Name, err)
-			}
-			scrapers[j*scrapesCount + i] = scraper
+	scrapers := make([]JsonScraper, len(configs))
+	for i, config := range configs { // apply the same configuration to all endpoints
+		tpe := ScrapeTypes[config.Type]
+		if tpe == nil {
+			return nil, fmt.Errorf("unknown scrape type;type:<%s>", config.Type)
 		}
+		tpe.Configure(config, reg)
+		scraper, err := tpe.NewScraper(config)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create scraper;name:<%s>,err:<%s>", config.Name, err)
+		}
+		scrapers[i] = scraper
 	}
 
 	return NewCollector(endpoints, scrapers), nil

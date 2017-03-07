@@ -10,16 +10,15 @@ import (
 )
 
 type JsonScraper interface {
-	Scrape(data []byte,reg *harness.MetricRegistry) error
+	Scrape(data []byte,endpoint Endpoint,reg *harness.MetricRegistry) error
 }
 
 type ValueScraper struct {
 	*Config
-	Endpoint
 	valueJsonPath *jsonpath.Path
 }
 
-func NewValueScraper(config *Config, endpoint Endpoint) (JsonScraper, error) {
+func NewValueScraper(config *Config) (JsonScraper, error) {
 	valuepath, err := compilePath(config.Path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse path;path:<%s>,err:<%s>", config.Path, err)
@@ -27,7 +26,6 @@ func NewValueScraper(config *Config, endpoint Endpoint) (JsonScraper, error) {
 
 	scraper := &ValueScraper{
 		Config:        config,
-		Endpoint:      endpoint,
 		valueJsonPath: valuepath,
 	}
 	return scraper, nil
@@ -57,7 +55,7 @@ func (vs *ValueScraper) forTargetValue(data []byte, handle func(*jsonpath.Result
 	return nil
 }
 
-func (vs *ValueScraper) Scrape(data []byte, reg *harness.MetricRegistry) error {
+func (vs *ValueScraper) Scrape(data []byte, endpoint Endpoint, reg *harness.MetricRegistry) error {
 	isFirst := true
 	return vs.forTargetValue(data, func(result *jsonpath.Result) {
 		if !isFirst {
@@ -80,20 +78,21 @@ func (vs *ValueScraper) Scrape(data []byte, reg *harness.MetricRegistry) error {
 			return
 		}
 
-		log.Debugf("metric updated;name:<%s>,labels:<%s>,value:<%.2f>", vs.Endpoint.Prefix+vs.Name, vs.Labels, value)
-		reg.Get(vs.Endpoint.Prefix+vs.Name).(*prometheus.GaugeVec).With(vs.Labels).Set(value)
+		vs.Labels["endpoint"] = endpoint.URL
+
+		log.Debugf("metric updated;name:<%s>,labels:<%s>,value:<%.2f>", vs.Name, vs.Labels, value)
+		reg.Get(vs.Name).(*prometheus.GaugeVec).With(vs.Labels).Set(value)
 	})
 }
 
 type ObjectScraper struct {
 	*ValueScraper
-	Endpoint
 	labelJsonPaths map[string]*jsonpath.Path
 	valueJsonPaths map[string]*jsonpath.Path
 }
 
-func NewObjectScraper(config *Config, endpoint Endpoint) (JsonScraper, error) {
-	valueScraper, err := NewValueScraper(config, endpoint)
+func NewObjectScraper(config *Config) (JsonScraper, error) {
+	valueScraper, err := NewValueScraper(config)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +107,6 @@ func NewObjectScraper(config *Config, endpoint Endpoint) (JsonScraper, error) {
 	}
 	scraper := &ObjectScraper{
 		ValueScraper:   valueScraper.(*ValueScraper),
-		Endpoint:       endpoint,
 		labelJsonPaths: labelPaths,
 		valueJsonPaths: valuePaths,
 	}
@@ -139,7 +137,7 @@ func (obsc *ObjectScraper) extractFirstValue(data []byte, path *jsonpath.Path) (
 	return result, nil
 }
 
-func (obsc *ObjectScraper) Scrape(data []byte, reg *harness.MetricRegistry) error {
+func (obsc *ObjectScraper) Scrape(data []byte, endpoint Endpoint, reg *harness.MetricRegistry) error {
 	return obsc.forTargetValue(data, func(result *jsonpath.Result) {
 		if result.Type != jsonpath.JsonObject && result.Type != jsonpath.JsonArray {
 			log.Warnf("skipping not structual result;path:<%s>,value:<%s>",
@@ -161,6 +159,7 @@ func (obsc *ObjectScraper) Scrape(data []byte, reg *harness.MetricRegistry) erro
 			}
 			labels[name] = string(value)
 		}
+		labels["endpoint"] = endpoint.URL
 
 		for name, configValue := range obsc.Values {
 			var metricValue float64
@@ -198,7 +197,7 @@ func (obsc *ObjectScraper) Scrape(data []byte, reg *harness.MetricRegistry) erro
 				metricValue = value
 			}
 
-			fqn := harness.MakeMetricName(obsc.Endpoint.Prefix+obsc.Name, name)
+			fqn := harness.MakeMetricName(obsc.Name, name)
 			log.Debugf("metric updated;name:<%s>,labels:<%s>,value:<%.2f>", fqn, labels, metricValue)
 			reg.Get(fqn).(*prometheus.GaugeVec).With(labels).Set(metricValue)
 		}

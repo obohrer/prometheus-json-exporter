@@ -17,7 +17,6 @@ type Config struct {
 
 type Endpoint struct {
 	URL    string `yaml:url`
-	Prefix string `yaml:prefix`
 }
 
 func (config *Config) labelNames() []string {
@@ -25,6 +24,7 @@ func (config *Config) labelNames() []string {
 	for name := range config.Labels {
 		labelNames = append(labelNames, name)
 	}
+	labelNames = append(labelNames,"endpoint")
 	return labelNames
 }
 

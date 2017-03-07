@@ -68,16 +68,15 @@ func (col *Collector) fetchJson(endpoint Endpoint) ([]byte, error) {
 }
 
 func (col *Collector) Collect(reg *harness.MetricRegistry) {
-	scrapesPerEndpoint := len(col.scrapers)/len(col.Endpoints)
-	for i, endpoint := range col.Endpoints {
+	for _, endpoint := range col.Endpoints {
 		json, err := col.fetchJson(endpoint)
 		if err != nil {
 			log.Error(err)
 			return
 		}
 
-		for j := 0; j < scrapesPerEndpoint; j++ {
-			if err := col.scrapers[i*scrapesPerEndpoint + j].Scrape(json, reg); err != nil {
+		for i := 0; i < len(col.scrapers); i++ {
+			if err := col.scrapers[i].Scrape(json, endpoint, reg); err != nil {
 				log.Errorf("error while scraping json from;err:<%s>;endpoint:<%s>", err, endpoint.URL)
 				continue
 			}

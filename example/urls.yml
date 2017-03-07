@@ -1,6 +1,4 @@
 ---
 - url: http://localhost:8000/data.json
-  prefix: data_
 
 - url: http://localhost:8000/test.json
-  prefix: test_
