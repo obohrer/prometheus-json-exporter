@@ -49,7 +49,7 @@ func Init(c *cli.Context, reg *harness.MetricRegistry) (harness.Collector, error
 
 	if len(args) < 2 {
 		cli.ShowAppHelp(c)
-		return nil, fmt.Errorf("not XXenough arguments")
+		return nil, fmt.Errorf("not enough arguments")
 	}
 
 	var (
@@ -62,7 +62,6 @@ func Init(c *cli.Context, reg *harness.MetricRegistry) (harness.Collector, error
 		return nil, err
 	}
 	endpoints, err := loadEndpoints(endpointsPath)
-	fmt.Errorf("Endpoints : <%s>", endpoints)
 	if err != nil {
 		return nil, err
 	}
